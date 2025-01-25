@@ -1,4 +1,4 @@
-import { verification } from "business/verification";
+import { verification } from "../business/verification";
 import express from "express";
 
 export const verificationStudent = async (
@@ -6,19 +6,8 @@ export const verificationStudent = async (
     res: express.Response
 ) => {
     try {
-        const params = {
-            programId: process.env.SHEERID_PROGRAM_ID,
-            metadata: {
-                email: req.body.email,
-                firstName: req.body.firstName,
-                lastName: req.body.lastName,
-                birthDate: req.body.birthDate,
-                university: req.body.university,
-            },
-            document: req.file,
-        };
-
-        const verificationResponse: any = await verification(params);
+        
+        const verificationResponse: any = await verification(req,res);
         return res.status(200).json(verificationResponse);
     } catch (error) {
         console.log(error);

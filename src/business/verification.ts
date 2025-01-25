@@ -1,120 +1,58 @@
 import axios from "axios";
-const FormData = require("form-data");
+import express from "express";
+import fs from 'fs'
+import pdf from 'pdf-parse'
 
-const SHEERID_API_KEY = process.env.SHEERID_API_KEY;
-const SHEERID_BASE_URL = "https://services.sheerid.com/rest/v2";
-
-export const verification = async (params: {
-    programId: string;
-    metadata: {
-        email: string;
-        firstName: string;
-        lastName: string;
-        birthDate: string;
-        university: string;
-    };
-}) => {
+export const verification = async (
+    req: express.Request,
+    res: express.Response) => {
     try {
-        const verificationResponse = await axios.post(
-            `${SHEERID_BASE_URL}/verification/program/${params.programId}/step/collectStudentPersonalInfo`,
-            {
-                firstName: params.metadata.firstName,
-                lastName: params.metadata.lastName,
-                birthDate: params.metadata.birthDate,
-                email: params.metadata.email,
-                organization: {
-                    idExtended: 1234, //university id gelecek onada ne verirsek bize kalmış
-                    name: params.metadata.university,
-                },
-            },
-            {
-                headers: {
-                    Authorization: `Bearer ${SHEERID_API_KEY}`,
-                },
-            }
-        );
 
-        const verificationId = verificationResponse.data.verificationId;
-        if (document && verificationId) {
-            const uploadDocumentResult = await uploadDocumentForVerification(
-                document,
-                verificationId
-            );
-            if (uploadDocumentResult.isSuccessful) {
-                const verificationCheck = await checkVerificationStatus(verificationId);
-                if (verificationCheck.isSuccessful) {
-                    return {
-                        isSuccessful: true,
-                        responseData: verificationCheck.responseData,
-                    };
-                } else {
-                    return {
-                        isSuccessful: false,
-                        responseData: [],
-                    };
-                }
+        const filePath = req.file.path;
+        console.log('Yüklenen dosya:', filePath);
+
+        const dataBuffer = fs.readFileSync(filePath);
+        const data = await pdf(dataBuffer);
+        const text = data.text;
+        console.log('PDF Metni:', text);
+
+
+        const keywords = {
+            adSoyad: /Adı\s*\/\s*Soyadı\s*:\s*([A-Za-zÇçĞğİıÖöŞşÜü\s]+)/,
+            ogrencilikDurumu: /Öğrencilik\s*Durumu\s*:\s*([A-Za-zÇçĞğİıÖöŞşÜü\s]+)/
+        };
+
+        const result: any = {};
+
+        for (const [key, regex] of Object.entries(keywords)) {
+            console.log("key", key, regex)
+            const match = text.match(regex);
+            console.log("match ", match)
+            if (match && match[1]) {
+                result[key] = match[1].trim();
+            } else {
+                result[key] = null;
             }
         }
+
+        if (result.ad && result.soyad && result.ogrencilikDurumu) {
+            res.status(200).json({
+                success: true,
+                message: 'success',
+                data: result
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                message: 'error',
+                data: result
+            });
+        }
+
     } catch (error) {
         return {
             isSuccessful: false,
-            responseData: [],
         };
     }
 };
 
-export const uploadDocumentForVerification = async (
-    document: any,
-    verificationId: string
-) => {
-    try {
-        const formData = new FormData();
-        formData.append("file", document);
-        const response = await axios.post(
-            `${SHEERID_BASE_URL}/verification/${verificationId}/step/docUpload`,
-            formData,
-            {
-                headers: {
-                    Authorization: `Bearer ${SHEERID_API_KEY}`,
-                    "Content-Type": "multipart/form-data",
-                },
-            }
-        );
-
-        if (response.status === 200) {
-            return {
-                isSuccessful: true,
-                responseData: response.data,
-            };
-        }
-    } catch (error) {
-        return {
-            isSuccessful: true,
-            error: error,
-        };
-    }
-};
-
-export const checkVerificationStatus = async (verificationId: string) => {
-    try {
-        const response = await axios.post(
-            `${SHEERID_BASE_URL}/verification/${verificationId}`,
-            {
-                headers: {
-                    Authorization: `Bearer ${SHEERID_API_KEY}`,
-                },
-            }
-        );
-        if (response.data.currentStep === "success") {
-            return {
-                isSuccessful: true,
-                responseData: response.data,
-            };
-        }
-    } catch (error) {
-        return {
-            isSuccessful: true,
-            error: error,
-        };
-    }
-};
